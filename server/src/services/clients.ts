@@ -31,7 +31,8 @@ function configuredOrder(): string[] {
 }
 
 let preferred: string | null = null;
-const lastResult = new Map<string, 'ok' | 'bot_check'>();
+/** Last outcome per client: "ok" or the yt-dlp error line. */
+const lastResult = new Map<string, string>();
 
 /** Strategies to try, last known-good first. */
 export function clientOrder(): string[] {
@@ -44,8 +45,8 @@ export function clientArgs(client: string): string[] {
   return client === 'default' ? [] : ['--extractor-args', `youtube:player_client=${client}`];
 }
 
-export function reportClient(client: string, ok: boolean): void {
-  lastResult.set(client, ok ? 'ok' : 'bot_check');
+export function reportClient(client: string, ok: boolean, err?: unknown): void {
+  lastResult.set(client, ok ? 'ok' : describe(err));
   if (ok) {
     if (preferred !== client) console.log(`[tubegrab] YouTube client "${client}" works; using it first from now on`);
     preferred = client;
@@ -57,6 +58,11 @@ export function reportClient(client: string, ok: boolean): void {
 /** For the status page: which client currently works and what was tried. */
 export function clientStatus() {
   return { preferred, tried: Object.fromEntries(lastResult) };
+}
+
+function describe(err: unknown): string {
+  if (err instanceof AppError) return `${err.code}: ${err.raw ?? err.message}`.slice(0, 220);
+  return 'failed';
 }
 
 export const isBotCheck = (err: unknown): boolean => err instanceof AppError && err.code === 'BOT_CHECK';
@@ -76,15 +82,19 @@ export function shouldTryNextClient(err: unknown, sawBotCheck: boolean): boolean
 export async function withClientFallback<T>(fn: (extraArgs: string[]) => Promise<T>): Promise<T> {
   const order = clientOrder();
   let botCheckErr: unknown = null;
+  const attempts: Record<string, string> = {};
   for (const [i, client] of order.entries()) {
     try {
       const result = await fn(clientArgs(client));
       reportClient(client, true);
       return result;
     } catch (err) {
+      attempts[client] = describe(err);
+      if (err instanceof AppError && Object.keys(attempts).length > 1) err.details = { clients: { ...attempts } };
       if (!shouldTryNextClient(err, botCheckErr !== null)) throw err;
-      reportClient(client, false);
+      reportClient(client, false, err);
       botCheckErr ??= err;
+      if (botCheckErr instanceof AppError) botCheckErr.details = { clients: { ...attempts } };
       if (i < order.length - 1) console.warn(`[tubegrab] client "${client}" failed (${(err as AppError).code}), retrying with "${order[i + 1]}"`);
     }
   }

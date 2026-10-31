@@ -20,6 +20,11 @@ export type ErrorCode =
   | 'INTERNAL';
 
 export class AppError extends Error {
+  /** yt-dlp's own error line, kept for diagnostics (never contains secrets). */
+  raw?: string;
+  /** Extra diagnostic data included in the JSON error response. */
+  details?: Record<string, unknown>;
+
   constructor(
     public readonly status: number,
     public readonly code: ErrorCode,
@@ -70,7 +75,9 @@ const RULES: Rule[] = [
     message: 'Live streams and upcoming premieres cannot be downloaded.',
   },
   {
-    test: /sign in to confirm you.?re not a bot|http error 429|too many requests/i,
+    // "Failed to extract any player response" is what yt-dlp reports when every
+    // client it tried got a blocked/empty answer, which is the same root cause.
+    test: /sign in to confirm you.?re not a bot|http error 429|too many requests|failed to extract any player response/i,
     status: 503,
     code: 'BOT_CHECK',
     message: config.ytdlpCookies
@@ -100,12 +107,18 @@ export function lastYtdlpError(stderr: string): string {
 export function mapYtdlpError(stderr: string): AppError {
   const line = lastYtdlpError(stderr);
   const haystack = line || stderr;
+  const withRaw = (err: AppError) => {
+    err.raw = line.replace(/^ERROR:\s*/, '').slice(0, 200);
+    return err;
+  };
   for (const rule of RULES) {
-    if (rule.test.test(haystack)) return new AppError(rule.status, rule.code, rule.message);
+    if (rule.test.test(haystack)) return withRaw(new AppError(rule.status, rule.code, rule.message));
   }
-  return new AppError(
-    502,
-    'DOWNLOAD_FAILED',
-    line ? `Download failed: ${line.replace(/^ERROR:\s*(\[[^\]]+\]\s*)?(\S+:\s*)?/, '')}` : 'Download failed.',
+  return withRaw(
+    new AppError(
+      502,
+      'DOWNLOAD_FAILED',
+      line ? `Download failed: ${line.replace(/^ERROR:\s*(\[[^\]]+\]\s*)?(\S+:\s*)?/, '')}` : 'Download failed.',
+    ),
   );
 }

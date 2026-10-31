@@ -146,7 +146,7 @@ export class Job extends EventEmitter {
       const err = mapYtdlpError(result.stderr);
       // YouTube bot check: retry the whole download with the next player client.
       if (shouldTryNextClient(err, botCheckErr !== null)) {
-        reportClient(client, false);
+        reportClient(client, false, err);
         botCheckErr ??= err;
         if (i < order.length - 1) {
           console.warn(`[job ${this.id}] client "${client}" failed (${err.code}), retrying with "${order[i + 1]}"`);

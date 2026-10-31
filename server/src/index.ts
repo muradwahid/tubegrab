@@ -56,7 +56,9 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return;
   }
   if (err instanceof AppError) {
-    res.status(err.status).json({ error: { code: err.code, message: err.message } });
+    res
+      .status(err.status)
+      .json({ error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) } });
     return;
   }
   if ((err as { type?: string }).type === 'entity.parse.failed') {
