@@ -8,6 +8,9 @@ interface Status {
   service: 'tubegrab-api';
   ytdlp: string | null;
   ffmpeg: string | null;
+  /** Whether YTDLP_COOKIES / YTDLP_PROXY are configured (values are never exposed). */
+  cookies: boolean;
+  proxy: boolean;
   maxPlaylistSize: number;
   uptimeSeconds: number;
   node: string;
@@ -18,14 +21,27 @@ const startedAt = Date.now();
 let ytdlp: string | null = null;
 let ffmpeg: string | null = null;
 
-/** Detect the binaries (at boot and on every status request, cached ~30s). */
+/**
+ * Detect the binaries (at boot and on status requests, cached ~30s).
+ * Concurrent callers share one in-flight check, so a request that arrives
+ * while the boot check is still running waits for it instead of seeing nulls.
+ */
 let lastCheck = 0;
-export async function refreshBinaries(force = false): Promise<{ ytdlp: string | null; ffmpeg: string | null }> {
-  if (force || Date.now() - lastCheck > 30_000) {
-    lastCheck = Date.now();
-    [ytdlp, ffmpeg] = await Promise.all([getYtdlpVersion(), getFfmpegVersion()]);
-  }
-  return { ytdlp, ffmpeg };
+let inFlight: Promise<{ ytdlp: string | null; ffmpeg: string | null }> | null = null;
+export function refreshBinaries(force = false): Promise<{ ytdlp: string | null; ffmpeg: string | null }> {
+  if (inFlight) return inFlight;
+  if (!force && Date.now() - lastCheck <= 30_000) return Promise.resolve({ ytdlp, ffmpeg });
+  inFlight = Promise.all([getYtdlpVersion(), getFfmpegVersion()])
+    .then(([y, f]) => {
+      ytdlp = y;
+      ffmpeg = f;
+      lastCheck = Date.now();
+      return { ytdlp, ffmpeg };
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+  return inFlight;
 }
 
 async function currentStatus(): Promise<Status> {
@@ -38,6 +54,8 @@ async function currentStatus(): Promise<Status> {
     service: 'tubegrab-api',
     ytdlp: bins.ytdlp,
     ffmpeg: bins.ffmpeg,
+    cookies: !!config.ytdlpCookies,
+    proxy: !!config.ytdlpProxy,
     maxPlaylistSize: config.maxPlaylistSize,
     uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
     node: process.version,
@@ -77,7 +95,7 @@ function renderHtml(s: Status): string {
   table { width:100%; border-collapse:collapse; } td { padding:8px 0; border-top:1px solid var(--line); }
   td:first-child { color:var(--muted); width:42%; }
   .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; vertical-align:middle; }
-  .dot.ok { background:#10b981; } .dot.bad { background:#ef4444; }
+  .dot.ok { background:#10b981; } .dot.bad { background:#ef4444; } .dot.off { background:#71717a; }
   p { color:var(--muted); font-size:13px; margin:16px 0 0; } a { color:#ef4444; } code { font-size:12px; }
 </style>
 </head>
@@ -88,6 +106,8 @@ function renderHtml(s: Status): string {
   <table>
     ${row('yt-dlp', s.ytdlp, !!s.ytdlp)}
     ${row('ffmpeg', s.ffmpeg, !!s.ffmpeg)}
+    <tr><td>YouTube cookies</td><td><span class="dot ${s.cookies ? 'ok' : 'off'}"></span>${s.cookies ? 'on' : 'off (set YTDLP_COOKIES if YouTube asks to confirm you’re not a bot)'}</td></tr>
+    <tr><td>Proxy</td><td><span class="dot ${s.proxy ? 'ok' : 'off'}"></span>${s.proxy ? 'on' : 'off'}</td></tr>
     <tr><td>Node.js</td><td>${esc(s.node)}</td></tr>
     <tr><td>Uptime</td><td>${esc(formatUptime(s.uptimeSeconds))}</td></tr>
     <tr><td>Max playlist size</td><td>${esc(s.maxPlaylistSize)}</td></tr>

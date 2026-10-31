@@ -91,6 +91,7 @@ Open <http://localhost:5173>.
 | `SSE_MAX_SECONDS` | `270` | Progress streams end after this long and the browser reconnects (keeps requests under Vercel's 300s limit). `0` = never |
 | `YTDLP_COOKIES` | (none) | Netscape `cookies.txt` contents (or base64 of it), for YouTube "not a bot" checks on cloud hosts |
 | `YTDLP_PROXY` | (none) | Proxy for yt-dlp, e.g. `http://user:pass@host:port` |
+| `YTDLP_EXTRACTOR_ARGS` | (none) | Passed to yt-dlp `--extractor-args`, e.g. `youtube:player_client=tv_simply,mweb` |
 
 **client/.env**
 
@@ -160,10 +161,18 @@ Every `git push` to the production branch redeploys automatically.
 - **5 minutes per request.** Progress streams renew themselves every 270s (`SSE_MAX_SECONDS`), so long downloads keep reporting progress. Very long or 4K videos can still fail if yt-dlp itself needs more than the instance stays alive, and saving a huge file over a slow connection can be cut off. Short and medium videos are fine. The Pro plan raises the limit to 800s.
 - **State in memory.** Jobs live in the container's memory. Vercel reuses a running instance before starting a new one, so with normal personal traffic every request hits the same instance. Under heavy concurrent traffic Vercel may start a second instance, and a progress, file or ZIP request that lands there gets "Download not found or expired". For heavy public use, Option B is more robust.
 - **Idle scale-down.** Instances shut down after about 5 minutes without traffic, and unfinished or undownloaded files go with them. Download your files when they finish.
-- **YouTube bot checks.** YouTube often answers cloud IPs with "Sign in to confirm you're not a bot". The app shows this as *"YouTube is temporarily blocking requests from this server"*. To get past it:
-  1. With a **throwaway** YouTube account (yt-dlp traffic can get an account flagged), export cookies in Netscape format, for example with the "Get cookies.txt LOCALLY" browser extension while on youtube.com.
-  2. Put the file's contents in the `YTDLP_COOKIES` environment variable (multi-line is fine; `base64 -i cookies.txt` output also works) and redeploy.
-  3. Alternatively, set `YTDLP_PROXY` to a residential proxy.
+- **YouTube bot checks.** YouTube often answers cloud IPs (Vercel, Render, AWS…) with "Sign in to confirm you're not a bot", and the app then shows *"YouTube is blocking this server"*. Fix it with cookies from a YouTube account:
+  1. Use a **throwaway** Google/YouTube account; heavy yt-dlp use can get an account flagged.
+  2. Open a **private/incognito window** and sign in to YouTube with it.
+  3. In that window, open `https://www.youtube.com/robots.txt` and make it the only open tab.
+  4. Export the cookies in **Netscape format**, e.g. with the "Get cookies.txt LOCALLY" extension (allow it in incognito), and save `cookies.txt`.
+  5. **Close the private window right away.** If you keep browsing, YouTube rotates the session and the exported cookies stop working.
+  6. Base64-encode the file: `base64 -i cookies.txt | pbcopy` (macOS) or `base64 -w0 cookies.txt` (Linux).
+  7. In Vercel → Project → Settings → Environment Variables, add `YTDLP_COOKIES` = the copied value (Production + Preview).
+  8. **Redeploy** (Deployments → ⋯ → Redeploy); environment changes only apply to new deployments.
+  9. Open `/api`: **YouTube cookies** should show a green "on".
+
+  Cookies eventually expire. If the error comes back, repeat these steps. If cookies alone aren't enough, `YTDLP_PROXY` (a residential proxy) and `YTDLP_EXTRACTOR_ARGS` (e.g. `youtube:player_client=tv_simply,mweb`) are further options.
 - `vercel dev` can run the whole project locally, but it needs Docker installed for the container service. Plain `npm run dev` is simpler.
 
 ### Option B: Vercel frontend + Docker backend (Render, Railway, VPS)

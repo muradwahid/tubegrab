@@ -24,6 +24,7 @@ export function baseArgs(): string[] {
 export function spawnYtdlp(args: string[]): ChildProcess {
   const extra: string[] = [];
   if (config.ytdlpProxy) extra.push('--proxy', config.ytdlpProxy);
+  if (config.ytdlpExtractorArgs) extra.push('--extractor-args', config.ytdlpExtractorArgs);
 
   // yt-dlp rewrites its cookie file on exit, so each process gets a private
   // copy (concurrent downloads would otherwise clobber a shared file).

@@ -54,6 +54,8 @@ export const config = {
   ytdlpCookies: cookiesFromEnv(),
   /** Optional proxy for yt-dlp, e.g. http://user:pass@host:port (helps with IP-based blocks). */
   ytdlpProxy: process.env.YTDLP_PROXY?.trim() || null,
+  /** Optional yt-dlp --extractor-args, e.g. "youtube:player_client=tv_simply,mweb". */
+  ytdlpExtractorArgs: process.env.YTDLP_EXTRACTOR_ARGS?.trim() || null,
   /**
    * Progress streams are ended after this many seconds and the browser
    * reconnects automatically. Keeps each request under serverless request

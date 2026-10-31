@@ -95,7 +95,11 @@ export interface BatchSnapshot {
 
 export interface HealthResponse {
   ok: boolean;
+  status?: 'ok' | 'degraded';
   ytdlp: string | null;
+  ffmpeg?: string | null;
+  cookies?: boolean;
+  proxy?: boolean;
   maxPlaylistSize: number;
 }
 

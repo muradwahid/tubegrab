@@ -1,3 +1,5 @@
+import { config } from '../config.js';
+
 export type ErrorCode =
   | 'INVALID_URL'
   | 'INVALID_REQUEST'
@@ -71,8 +73,9 @@ const RULES: Rule[] = [
     test: /sign in to confirm you.?re not a bot|http error 429|too many requests/i,
     status: 503,
     code: 'BOT_CHECK',
-    message:
-      'YouTube is temporarily blocking requests from this server (bot check / rate limit). Try again later.',
+    message: config.ytdlpCookies
+      ? 'YouTube is blocking this server even with cookies (bot check / rate limit). The cookies may have expired: export fresh ones into YTDLP_COOKIES and redeploy, or try again later.'
+      : 'YouTube is blocking this server (“confirm you’re not a bot”). Fix: add YouTube cookies to the server’s YTDLP_COOKIES environment variable and redeploy (see README → YouTube bot checks).',
   },
   {
     test: /unsupported url|incomplete youtube id|is not a valid url|invalid (video|playlist) id/i,
