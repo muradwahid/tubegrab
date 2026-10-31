@@ -2,26 +2,21 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
     "client": {
-      "root": "client",
-      "framework": "vite"
+      "root": "client/",
+      "framework": "vite",
+      "installCommand": "npm ci",
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist"
     },
     "server": {
-      "root": "server",
-      "framework": "express"
+      "root": "server/",
+      "runtime": "container",
+      "entrypoint": "Dockerfile"
     }
   },
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": {
-        "service": "server"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "destination": {
-        "service": "client"
-      }
-    }
+    { "source": "/api", "destination": { "service": "server" } },
+    { "source": "/api/(.*)", "destination": { "service": "server" } },
+    { "source": "/(.*)", "destination": { "service": "client" } }
   ]
 }

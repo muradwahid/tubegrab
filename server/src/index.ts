@@ -73,6 +73,9 @@ async function main() {
   const server = app.listen(config.port, () => {
     console.log(`[tubegrab] API listening on http://localhost:${config.port}`);
     console.log(`[tubegrab] CORS origins: ${config.clientOrigins.join(', ')}`);
+    console.log(
+      `[tubegrab] progress streams renew every ${config.sseMaxSeconds || '∞'}s · cookies ${config.ytdlpCookies ? 'on' : 'off'} · proxy ${config.ytdlpProxy ? 'on' : 'off'}`,
+    );
   });
 
   try {

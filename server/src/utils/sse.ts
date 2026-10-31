@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { config } from '../config.js';
 
 export interface SseChannel {
   send: (event: string, data: unknown) => void;
@@ -6,7 +7,11 @@ export interface SseChannel {
   onClose: (fn: () => void) => void;
 }
 
-/** Open a Server-Sent Events stream with heartbeats; cleans up on disconnect. */
+/**
+ * Open a Server-Sent Events stream with heartbeats; cleans up on disconnect.
+ * The stream ends itself after `config.sseMaxSeconds` so it never hits a
+ * platform request timeout; EventSource reconnects and gets a fresh snapshot.
+ */
 export function openSse(req: Request, res: Response): SseChannel {
   res.status(200);
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -23,10 +28,19 @@ export function openSse(req: Request, res: Response): SseChannel {
     if (!closed) res.write(': ping\n\n');
   }, 15_000);
 
+  const lifetime =
+    config.sseMaxSeconds > 0
+      ? setTimeout(() => {
+          cleanup();
+          res.end();
+        }, config.sseMaxSeconds * 1000)
+      : null;
+
   const cleanup = () => {
     if (closed) return;
     closed = true;
     clearInterval(heartbeat);
+    if (lifetime) clearTimeout(lifetime);
     for (const fn of closeHandlers) fn();
   };
   req.on('close', cleanup);

@@ -1,4 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import readline from 'node:readline';
 import { config } from '../config.js';
 import { AppError, mapYtdlpError } from '../utils/errors.js';
@@ -18,13 +22,33 @@ export function baseArgs(): string[] {
 }
 
 export function spawnYtdlp(args: string[]): ChildProcess {
-  return spawn(config.ytdlpPath, args, {
+  const extra: string[] = [];
+  if (config.ytdlpProxy) extra.push('--proxy', config.ytdlpProxy);
+
+  // yt-dlp rewrites its cookie file on exit, so each process gets a private
+  // copy (concurrent downloads would otherwise clobber a shared file).
+  let cookieFile: string | null = null;
+  if (config.ytdlpCookies) {
+    cookieFile = path.join(os.tmpdir(), `tubegrab-cookies-${randomUUID()}.txt`);
+    fs.writeFileSync(cookieFile, config.ytdlpCookies, { mode: 0o600 });
+    extra.push('--cookies', cookieFile);
+  }
+
+  const child = spawn(config.ytdlpPath, [...extra, ...args], {
     stdio: ['ignore', 'pipe', 'pipe'],
     // Own process group on POSIX so we can kill yt-dlp *and* its ffmpeg children.
     detached: process.platform !== 'win32',
     windowsHide: true,
     env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
   });
+
+  if (cookieFile) {
+    const file = cookieFile;
+    const remove = () => fs.rm(file, { force: true }, () => undefined);
+    child.once('close', remove);
+    child.once('error', remove);
+  }
+  return child;
 }
 
 /** Kill a yt-dlp process and any ffmpeg children it spawned. */
