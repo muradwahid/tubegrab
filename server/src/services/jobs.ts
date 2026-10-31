@@ -15,6 +15,7 @@ import {
   type Quality,
 } from './formats.js';
 import { baseArgs, killTree, onLines, spawnError, spawnYtdlp } from './ytdlp.js';
+import { clientArgs, clientOrder, reportClient, shouldTryNextClient } from './clients.js';
 
 export type JobStatus =
   | 'queued'
@@ -128,8 +129,44 @@ export class Job extends EventEmitter {
     }
     if (this.cancelled) return;
 
+    const order = clientOrder();
+    let botCheckErr: AppError | null = null;
+    for (const [i, client] of order.entries()) {
+      const result = await this.runAttempt(clientArgs(client));
+      if (this.cancelled || this.isTerminal) return;
+      if ('spawnError' in result) {
+        this.fail(result.spawnError);
+        return;
+      }
+      if (result.code === 0) {
+        reportClient(client, true);
+        await this.onSuccess();
+        return;
+      }
+      const err = mapYtdlpError(result.stderr);
+      // YouTube bot check: retry the whole download with the next player client.
+      if (shouldTryNextClient(err, botCheckErr !== null)) {
+        reportClient(client, false);
+        botCheckErr ??= err;
+        if (i < order.length - 1) {
+          console.warn(`[job ${this.id}] client "${client}" failed (${err.code}), retrying with "${order[i + 1]}"`);
+          this.resetForRetry();
+          continue;
+        }
+      }
+      console.warn(`[job ${this.id}] yt-dlp exited with code ${result.code}\n${result.stderr.slice(-1500)}`);
+      this.fail(botCheckErr ?? err);
+      return;
+    }
+  }
+
+  /** One yt-dlp run. Resolves with its exit code and stderr tail. */
+  private runAttempt(
+    clientExtraArgs: string[],
+  ): Promise<{ code: number | null; stderr: string } | { spawnError: AppError }> {
     const args = [
       ...baseArgs(),
+      ...clientExtraArgs,
       '--no-playlist',
       '--newline',
       '--progress',
@@ -150,26 +187,32 @@ export class Job extends EventEmitter {
       this.url,
     ];
 
-    await new Promise<void>((resolve) => {
+    return new Promise((resolve) => {
       let child: ChildProcess;
       try {
         child = spawnYtdlp(args);
       } catch (err) {
-        this.fail(spawnError(err as NodeJS.ErrnoException));
-        resolve();
+        resolve({ spawnError: spawnError(err as NodeJS.ErrnoException) });
         return;
       }
       this.child = child;
       onLines(child, (line, stream) => this.handleLine(line, stream));
-      child.on('error', (err) => {
-        this.fail(spawnError(err));
-        resolve();
-      });
+      child.on('error', (err) => resolve({ spawnError: spawnError(err) }));
       child.on('close', (code) => {
         this.child = null;
-        void this.onExit(code).finally(resolve);
+        resolve({ code, stderr: this.stderrTail.join('\n') });
       });
     });
+  }
+
+  /** Clear per-attempt state before retrying with another client. */
+  private resetForRetry() {
+    this.stderrTail = [];
+    this.parts.clear();
+    this.partCount = 1;
+    this.mergedEstimate = null;
+    this.filePath = null;
+    this.patch({ status: 'starting', percent: 0, downloadedBytes: 0, totalBytes: null, speed: null, eta: null }, true);
   }
 
   cancel(): void {
@@ -265,36 +308,29 @@ export class Job extends EventEmitter {
     });
   }
 
-  private async onExit(code: number | null) {
-    if (this.cancelled || this.isTerminal) return;
-    if (code === 0) {
-      if (!this.filePath) this.filePath = await this.findOutputFile();
-      if (this.filePath) {
-        try {
-          const stat = await fs.stat(this.filePath);
-          if (!this.state.filename) {
-            const ext = path.extname(this.filePath).slice(1) || 'mp4';
-            this.applyActualQuality(null, null, ext);
-          }
-          this.finish({
-            status: 'done',
-            percent: 100,
-            speed: null,
-            eta: null,
-            downloadedBytes: stat.size,
-            totalBytes: stat.size,
-          });
-          return;
-        } catch {
-          /* fall through to error */
+  private async onSuccess() {
+    if (!this.filePath) this.filePath = await this.findOutputFile();
+    if (this.filePath) {
+      try {
+        const stat = await fs.stat(this.filePath);
+        if (!this.state.filename) {
+          const ext = path.extname(this.filePath).slice(1) || 'mp4';
+          this.applyActualQuality(null, null, ext);
         }
+        this.finish({
+          status: 'done',
+          percent: 100,
+          speed: null,
+          eta: null,
+          downloadedBytes: stat.size,
+          totalBytes: stat.size,
+        });
+        return;
+      } catch {
+        /* fall through to error */
       }
-      this.fail(new AppError(500, 'DOWNLOAD_FAILED', 'yt-dlp finished but no output file was produced.'));
-      return;
     }
-    const stderr = this.stderrTail.join('\n');
-    console.warn(`[job ${this.id}] yt-dlp exited with code ${code}\n${stderr.slice(-1500)}`);
-    this.fail(mapYtdlpError(stderr));
+    this.fail(new AppError(500, 'DOWNLOAD_FAILED', 'yt-dlp finished but no output file was produced.'));
   }
 
   private async findOutputFile(): Promise<string | null> {

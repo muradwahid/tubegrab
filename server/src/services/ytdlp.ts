@@ -6,6 +6,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { config } from '../config.js';
 import { AppError, mapYtdlpError } from '../utils/errors.js';
+import { withClientFallback } from './clients.js';
 
 /**
  * Arguments shared by every yt-dlp invocation. User input is NEVER placed in
@@ -97,8 +98,20 @@ export function runYtdlpJson<T>(
   args: string[],
   opts: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<T> {
+  // Retries with other YouTube player clients if YouTube answers with a bot check.
+  return withClientFallback((clientArgs) => runYtdlpJsonOnce<T>([...clientArgs, ...args], opts));
+}
+
+function runYtdlpJsonOnce<T>(
+  args: string[],
+  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<T> {
   const { timeoutMs = 90_000, signal } = opts;
   return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new AppError(499, 'INTERNAL', 'Request cancelled.'));
+      return;
+    }
     const child = spawnYtdlp([...baseArgs(), ...args]);
     const out: Buffer[] = [];
     let stderr = '';

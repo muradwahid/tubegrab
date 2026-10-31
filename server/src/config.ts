@@ -56,6 +56,8 @@ export const config = {
   ytdlpProxy: process.env.YTDLP_PROXY?.trim() || null,
   /** Optional yt-dlp --extractor-args, e.g. "youtube:player_client=tv_simply,mweb". */
   ytdlpExtractorArgs: process.env.YTDLP_EXTRACTOR_ARGS?.trim() || null,
+  /** Player clients tried on YouTube bot checks (comma-separated, "off" disables). */
+  ytdlpClientFallback: process.env.YTDLP_CLIENT_FALLBACK?.trim().toLowerCase() || null,
   /**
    * Progress streams are ended after this many seconds and the browser
    * reconnects automatically. Keeps each request under serverless request

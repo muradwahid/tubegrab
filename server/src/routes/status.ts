@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { config } from '../config.js';
 import { getFfmpegVersion, getYtdlpVersion } from '../services/ytdlp.js';
+import { clientStatus } from '../services/clients.js';
 
 interface Status {
   ok: boolean;
@@ -11,6 +12,8 @@ interface Status {
   /** Whether YTDLP_COOKIES / YTDLP_PROXY are configured (values are never exposed). */
   cookies: boolean;
   proxy: boolean;
+  /** YouTube player client that last worked on this instance, and per-client results. */
+  youtubeClient: { preferred: string | null; tried: Record<string, string> };
   maxPlaylistSize: number;
   uptimeSeconds: number;
   node: string;
@@ -56,6 +59,7 @@ async function currentStatus(): Promise<Status> {
     ffmpeg: bins.ffmpeg,
     cookies: !!config.ytdlpCookies,
     proxy: !!config.ytdlpProxy,
+    youtubeClient: clientStatus(),
     maxPlaylistSize: config.maxPlaylistSize,
     uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
     node: process.version,
@@ -107,6 +111,7 @@ function renderHtml(s: Status): string {
     ${row('yt-dlp', s.ytdlp, !!s.ytdlp)}
     ${row('ffmpeg', s.ffmpeg, !!s.ffmpeg)}
     <tr><td>YouTube cookies</td><td><span class="dot ${s.cookies ? 'ok' : 'off'}"></span>${s.cookies ? 'on' : 'off (set YTDLP_COOKIES if YouTube asks to confirm you’re not a bot)'}</td></tr>
+    <tr><td>YouTube client</td><td>${esc(s.youtubeClient.preferred ?? 'not determined yet')}</td></tr>
     <tr><td>Proxy</td><td><span class="dot ${s.proxy ? 'ok' : 'off'}"></span>${s.proxy ? 'on' : 'off'}</td></tr>
     <tr><td>Node.js</td><td>${esc(s.node)}</td></tr>
     <tr><td>Uptime</td><td>${esc(formatUptime(s.uptimeSeconds))}</td></tr>
