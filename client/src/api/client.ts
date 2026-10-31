@@ -11,10 +11,19 @@ import type {
 /**
  * API base URL. In dev it defaults to the local server; in a production build
  * it defaults to the same origin (e.g. Vercel serving /api/* from the server).
+ * A localhost VITE_API_URL (copied from a local .env by mistake) is ignored on a
+ * deployed site, because a visitor's browser can't reach the developer's machine.
  */
-export const API_URL = (
-  import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:4000' : '')
-).replace(/\/+$/, '');
+function resolveApiUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_URL?.trim();
+  if (import.meta.env.DEV) return fromEnv || 'http://localhost:4000';
+  const isLocalUrl = !!fromEnv && /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(fromEnv);
+  const pageIsLocal = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+  if (isLocalUrl && !pageIsLocal) return '';
+  return fromEnv ?? '';
+}
+
+export const API_URL = resolveApiUrl().replace(/\/+$/, '');
 
 export class ApiError extends Error {
   constructor(

@@ -15,6 +15,8 @@ interface Status {
   /** YouTube player client that last worked on this instance, and per-client results. */
   youtubeClient: { preferred: string | null; tried: Record<string, string> };
   maxPlaylistSize: number;
+  /** Non-secret settings in effect, so you can confirm environment variables were applied. */
+  settings: Record<string, string | number | boolean>;
   uptimeSeconds: number;
   node: string;
   time: string;
@@ -61,6 +63,19 @@ async function currentStatus(): Promise<Status> {
     proxy: !!config.ytdlpProxy,
     youtubeClient: clientStatus(),
     maxPlaylistSize: config.maxPlaylistSize,
+    settings: {
+      platform: config.onVercel ? 'vercel' : config.inContainer ? 'container' : 'local',
+      port: config.port,
+      trustProxy: config.trustProxy,
+      rateLimitPerMinute: config.rateLimitPerMinute,
+      maxPlaylistSize: config.maxPlaylistSize,
+      fileTtlMinutes: Math.round(config.fileTtlMs / 60_000),
+      sseMaxSeconds: config.sseMaxSeconds,
+      downloadDir: config.downloadDir,
+      clientOrigin: config.clientOrigins.join(', '),
+      ytdlpCookies: config.ytdlpCookies ? 'set' : 'not set',
+      ytdlpProxy: config.ytdlpProxy ? 'set' : 'not set',
+    },
     uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
     node: process.version,
     time: new Date().toISOString(),
@@ -117,6 +132,12 @@ function renderHtml(s: Status): string {
     <tr><td>Uptime</td><td>${esc(formatUptime(s.uptimeSeconds))}</td></tr>
     <tr><td>Max playlist size</td><td>${esc(s.maxPlaylistSize)}</td></tr>
     <tr><td>Allowed frontend</td><td><code>${esc(config.clientOrigins.join(', '))}</code></td></tr>
+  </table>
+  <h2 style="font-size:14px;margin:20px 0 4px">Settings in use</h2>
+  <table>
+    ${Object.entries(s.settings)
+      .map(([k, v]) => `<tr><td>${esc(k)}</td><td><code>${esc(v)}</code></td></tr>`)
+      .join('')}
   </table>
   ${s.status === 'ok' ? '' : `<p><b>Downloads won’t work on this host</b> until yt-dlp and ffmpeg are installed — see the README’s deployment section.</p>`}
   <p>Machine-readable: <a href="/api/health">/api/health</a>. This is the backend; open the TubeGrab web app to download videos.</p>

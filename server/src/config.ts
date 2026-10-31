@@ -6,7 +6,13 @@ import { fileURLToPath } from 'node:url';
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Running on Vercel (read-only filesystem except /tmp, behind Vercel's proxy). */
-const onVercel = !!process.env.VERCEL;
+const onVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV || process.env.VERCEL_URL);
+
+/**
+ * Set by server/Dockerfile. The container only runs on hosting platforms
+ * (Vercel, Render, Railway), which always sit behind a reverse proxy.
+ */
+const inContainer = process.env.TUBEGRAB_CONTAINER === '1';
 
 function int(name: string, fallback: number, min = 1): number {
   const raw = process.env[name];
@@ -42,6 +48,7 @@ export const config = {
     .filter(Boolean),
   maxPlaylistSize: int('MAX_PLAYLIST_SIZE', 100),
   onVercel,
+  inContainer,
   downloadDir: path.resolve(
     serverRoot,
     process.env.DOWNLOAD_DIR ?? (onVercel ? path.join(os.tmpdir(), 'tubegrab') : './downloads'),
@@ -50,7 +57,10 @@ export const config = {
   ffmpegPath: process.env.FFMPEG_PATH?.trim() || 'ffmpeg',
   fileTtlMs: int('FILE_TTL_MINUTES', 30) * 60_000,
   rateLimitPerMinute: int('RATE_LIMIT_PER_MINUTE', 10),
-  trustProxy: onVercel || process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true',
+  // Behind a platform proxy we must trust X-Forwarded-For, otherwise every visitor
+  // shares one rate-limit bucket. This holds even if TRUST_PROXY=0 was copied from a local .env.
+  trustProxy:
+    inContainer || onVercel || process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true',
   ytdlpCookies: cookiesFromEnv(),
   /** Optional proxy for yt-dlp, e.g. http://user:pass@host:port (helps with IP-based blocks). */
   ytdlpProxy: process.env.YTDLP_PROXY?.trim() || null,

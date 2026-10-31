@@ -153,7 +153,8 @@ Because both share one domain, the frontend calls `/api/...` directly: no `VITE_
    - `YTDLP_COOKIES`: see "YouTube bot checks" below
    - `YTDLP_PROXY`
    - Leave `PORT` unset; the image listens on port 80, Vercel's container default.
-4. Deploy, then check **`https://<your-project>.vercel.app/api`**. The status page should say **"Running — ready to download"** with yt-dlp and ffmpeg versions. If it does, the app at `https://<your-project>.vercel.app/` works end to end.
+   - You don't need to copy your local `.env` values into Vercel; the defaults are right for Vercel. A copied `TRUST_PROXY=0` or a `localhost` `VITE_API_URL` is ignored on the deployed site.
+4. Deploy, then check **`https://<your-project>.vercel.app/api`**. Its **Settings in use** table shows the values the server actually applied. The status page should say **"Running — ready to download"** with yt-dlp and ffmpeg versions. If it does, the app at `https://<your-project>.vercel.app/` works end to end.
 
 Every `git push` to the production branch redeploys automatically.
 

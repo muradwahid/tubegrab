@@ -29,6 +29,7 @@ RUN apt-get update \
 # can bind port 80 inside the isolated container; hosts that inject their own
 # $PORT (Render, Railway) work the same way.
 ENV NODE_ENV=production \
+    TUBEGRAB_CONTAINER=1 \
     PORT=80 \
     DOWNLOAD_DIR=/tmp/tubegrab \
     TRUST_PROXY=1
