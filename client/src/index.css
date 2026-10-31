@@ -1,0 +1,81 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode: <html class="dark"> (dark is the default). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-accent: #ef4444;
+  --color-accent-hover: #dc2626;
+  --color-ink: #0b0b0f;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
+  --animate-toast-in: toast-in 0.22s ease-out;
+  --animate-fade-in: fade-in 0.25s ease-out;
+
+  @keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  html:not(.dark) {
+    color-scheme: light;
+  }
+  body {
+    @apply min-h-dvh bg-zinc-50 text-zinc-900 antialiased dark:bg-ink dark:text-zinc-100;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* Reusable component utilities (v4 @utility so they can be composed with @apply). */
+@utility card {
+  @apply rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/60 dark:shadow-none;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-accent text-white hover:bg-accent-hover active:bg-red-700;
+}
+@utility btn-secondary {
+  @apply btn border border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-100 dark:hover:bg-zinc-800;
+}
+@utility btn-ghost {
+  @apply btn text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100;
+}
+@utility section-label {
+  @apply mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400;
+}
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(113 113 122 / 0.5) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
