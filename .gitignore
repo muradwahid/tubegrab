@@ -5,3 +5,7 @@ dist/
 server/downloads/
 .DS_Store
 *.log
+
+# YouTube cookies give access to an account; set them via the YTDLP_COOKIES env var, never commit them
+cookies.txt
+*cookies*.txt
