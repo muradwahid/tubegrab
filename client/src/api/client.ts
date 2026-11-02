@@ -1,5 +1,7 @@
 import type {
   BatchSnapshot,
+  ChannelPage,
+  ChannelTab,
   HealthResponse,
   JobSnapshot,
   OutputFormat,
@@ -102,6 +104,9 @@ export const api = {
     request<{ ok: boolean }>(`/api/download/${jobId}`, { method: 'DELETE' }),
 
   playlist: (url: string, signal?: AbortSignal) => post<PlaylistInfo>('/api/playlist', { url }, signal),
+
+  channel: (url: string, tab: ChannelTab, page: number, signal?: AbortSignal) =>
+    post<ChannelPage>('/api/channel', { url, tab, page }, signal),
 
   startPlaylist: (
     videos: Array<{ id: string; title: string }>,

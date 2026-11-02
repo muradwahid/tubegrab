@@ -8,42 +8,11 @@ import { sanitizeFilename } from '../utils/sanitize.js';
 import { openSse } from '../utils/sse.js';
 import { runYtdlpJson } from '../services/ytdlp.js';
 import { PLAYLIST_QUALITIES } from '../services/formats.js';
+import { FLAT_LISTING_ARGS, mapEntries, type ListedVideo, type RawListing } from '../services/listing.js';
 import { createBatch, getBatch, subscribe } from '../services/jobs.js';
 import { abortOnClose, param, parseQualityAndFormat } from './helpers.js';
 
-interface RawThumb {
-  url?: string;
-  width?: number;
-  height?: number;
-}
-interface RawEntry {
-  id?: string;
-  title?: string;
-  duration?: number | null;
-  thumbnails?: RawThumb[];
-  channel?: string;
-  uploader?: string;
-  availability?: string | null;
-  live_status?: string | null;
-}
-interface RawPlaylist {
-  id?: string;
-  title?: string;
-  channel?: string;
-  uploader?: string;
-  playlist_count?: number;
-  entries?: RawEntry[];
-}
-
-export interface PlaylistVideo {
-  id: string;
-  title: string;
-  duration: number | null;
-  thumbnail: string;
-  channel: string | null;
-  /** Private/deleted/live entries can't be downloaded. */
-  unavailable: boolean;
-}
+export type PlaylistVideo = ListedVideo;
 
 export interface PlaylistInfo {
   id: string;
@@ -55,39 +24,16 @@ export interface PlaylistInfo {
   videos: PlaylistVideo[];
 }
 
-function pickThumb(entry: RawEntry, id: string): string {
-  const thumbs = (entry.thumbnails ?? []).filter((t) => t.url);
-  const good = thumbs.find((t) => (t.width ?? 0) >= 320) ?? thumbs.at(-1);
-  return good?.url ?? `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
-}
-
 export function playlistRouter(limiter: RateLimitRequestHandler) {
   const router = Router();
 
   router.post('/playlist', limiter, async (req, res) => {
     const { id, url } = parsePlaylistUrl(req.body?.url);
-    const raw = await runYtdlpJson<RawPlaylist>(
-      ['--flat-playlist', '--dump-single-json', '--playlist-end', String(config.maxPlaylistSize), '--', url],
+    const raw = await runYtdlpJson<RawListing>(
+      [...FLAT_LISTING_ARGS, '--playlist-end', String(config.maxPlaylistSize), '--', url],
       { signal: abortOnClose(req, res), timeoutMs: 120_000 },
     );
-    const videos: PlaylistVideo[] = (raw.entries ?? [])
-      .filter((e): e is RawEntry & { id: string } => typeof e.id === 'string' && VIDEO_ID_RE.test(e.id))
-      .map((e) => {
-        const title = e.title ?? 'Untitled';
-        const unavailable =
-          /^\[(private|deleted) video\]$/i.test(title) ||
-          ['private', 'needs_auth', 'subscriber_only', 'premium_only'].includes(e.availability ?? '') ||
-          e.live_status === 'is_live' ||
-          e.live_status === 'is_upcoming';
-        return {
-          id: e.id,
-          title,
-          duration: e.duration ?? null,
-          thumbnail: pickThumb(e, e.id),
-          channel: e.channel ?? e.uploader ?? null,
-          unavailable,
-        };
-      });
+    const videos: PlaylistVideo[] = mapEntries(raw.entries);
     if (videos.length === 0) {
       throw new AppError(404, 'UNAVAILABLE', 'This playlist is empty or unavailable.');
     }

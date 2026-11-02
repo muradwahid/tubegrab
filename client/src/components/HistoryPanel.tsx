@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, History, ListVideo, RotateCcw, Trash2, Video, X } from 'lucide-react';
+import { ExternalLink, History, ListVideo, RotateCcw, Trash2, Tv, Video, X } from 'lucide-react';
 import type { HistoryItem } from '../types';
 import { formatRelativeTime } from '../utils/format';
 
@@ -51,7 +51,7 @@ export function HistoryPanel({ items, onLoad, onRemove, onClear }: Props) {
       ) : (
         <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
           {items.map((item) => {
-            const KindIcon = item.kind === 'playlist' ? ListVideo : Video;
+            const KindIcon = item.kind === 'playlist' ? ListVideo : item.kind === 'channel' ? Tv : Video;
             return (
               <li key={item.id} className="group flex items-center gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-zinc-200 dark:bg-zinc-800">

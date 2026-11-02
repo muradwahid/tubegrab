@@ -75,6 +75,45 @@ export function parsePlaylistUrl(input: unknown): { id: string; url: string } {
   return { id: list, url: `https://www.youtube.com/playlist?list=${list}` };
 }
 
+export const CHANNEL_TABS = ['videos', 'shorts', 'streams'] as const;
+export type ChannelTab = (typeof CHANNEL_TABS)[number];
+
+const HANDLE_RE = /^@[\p{L}\p{N}._-]{1,100}$/u;
+const CHANNEL_ID_RE = /^UC[A-Za-z0-9_-]{22}$/;
+const LEGACY_NAME_RE = /^[\p{L}\p{N}._-]{1,100}$/u;
+
+/**
+ * Validate a channel URL (@handle, /channel/UC…, /c/name, /user/name) and
+ * return a canonical tab URL built only from the validated identifier.
+ */
+export function parseChannelUrl(input: unknown, tab: ChannelTab = 'videos'): { key: string; url: string } {
+  const url = parseAllowed(input);
+  const parts = url.pathname
+    .split('/')
+    .filter(Boolean)
+    .map((p) => decodeURIComponent(p));
+  const [first, second] = parts;
+  let path: string | null = null;
+  if (first && HANDLE_RE.test(first)) {
+    path = `/${encodeURIComponent(first).replace(/%40/g, '@')}`;
+  } else if (first === 'channel' && second && CHANNEL_ID_RE.test(second)) {
+    path = `/channel/${second}`;
+  } else if ((first === 'c' || first === 'user') && second && LEGACY_NAME_RE.test(second)) {
+    path = `/${first}/${encodeURIComponent(second)}`;
+  }
+  if (!path) {
+    if (url.searchParams.get('v') || url.hostname.toLowerCase().endsWith('youtu.be')) {
+      throw new AppError(400, 'INVALID_URL', 'That’s a video link. Paste a channel link like youtube.com/@channelname.');
+    }
+    throw new AppError(
+      400,
+      'INVALID_URL',
+      'That doesn’t look like a channel link. Use youtube.com/@name or youtube.com/channel/UC….',
+    );
+  }
+  return { key: path, url: `https://www.youtube.com${path}/${tab}` };
+}
+
 export function videoUrlFromId(id: string): string {
   if (!VIDEO_ID_RE.test(id)) throw new AppError(400, 'INVALID_REQUEST', `Invalid video ID: ${id}`);
   return `https://www.youtube.com/watch?v=${id}`;

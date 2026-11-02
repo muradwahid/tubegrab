@@ -1,16 +1,20 @@
 import { Ban } from 'lucide-react';
 import type { PlaylistVideo } from '../types';
-import { cn, formatDuration } from '../utils/format';
+import { cn, formatDuration, formatViews, uploadRange } from '../utils/format';
 
 interface Props {
   videos: PlaylistVideo[];
   selected: ReadonlySet<string>;
   onToggle: (id: string) => void;
   disabled?: boolean;
+  /** Hide the channel name (e.g. when listing a single channel). */
+  hideChannel?: boolean;
+  /** Show 1-based positions (playlist order). Off for re-sorted lists. */
+  showIndex?: boolean;
 }
 
 /** Scrollable, checkable list of playlist videos. */
-export function PlaylistList({ videos, selected, onToggle, disabled }: Props) {
+export function PlaylistList({ videos, selected, onToggle, disabled, hideChannel, showIndex = true }: Props) {
   return (
     <ul
       className="scrollbar-thin max-h-[28rem] divide-y divide-zinc-100 overflow-y-auto rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800"
@@ -35,7 +39,7 @@ export function PlaylistList({ videos, selected, onToggle, disabled }: Props) {
                 onChange={() => onToggle(v.id)}
                 aria-label={`Select ${v.title}`}
               />
-              <span className="w-7 shrink-0 text-right text-xs tabular-nums text-zinc-400">{i + 1}</span>
+              {showIndex && <span className="w-7 shrink-0 text-right text-xs tabular-nums text-zinc-400">{i + 1}</span>}
               <div className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-md bg-zinc-200 sm:w-28 dark:bg-zinc-800">
                 <img src={v.thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
                 {v.duration !== null && (
@@ -53,7 +57,7 @@ export function PlaylistList({ videos, selected, onToggle, disabled }: Props) {
                     <Ban className="h-3 w-3" /> Unavailable
                   </p>
                 ) : (
-                  v.channel && <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">{v.channel}</p>
+                  <VideoMeta video={v} hideChannel={hideChannel} />
                 )}
               </div>
             </label>
@@ -61,5 +65,21 @@ export function PlaylistList({ videos, selected, onToggle, disabled }: Props) {
         );
       })}
     </ul>
+  );
+}
+
+function VideoMeta({ video, hideChannel }: { video: PlaylistVideo; hideChannel?: boolean }) {
+  const range = uploadRange(video.uploadDate);
+  const parts = [hideChannel ? null : video.channel, formatViews(video.viewCount)].filter(Boolean);
+  return (
+    <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
+      {range && (
+        <span title={range.title} className={cn(!range.exact && 'cursor-help underline decoration-dotted underline-offset-2')}>
+          {range.label}
+        </span>
+      )}
+      {range && parts.length > 0 && ' · '}
+      {parts.join(' · ')}
+    </p>
   );
 }

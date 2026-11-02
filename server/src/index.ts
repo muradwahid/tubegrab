@@ -6,6 +6,7 @@ import { AppError } from './utils/errors.js';
 import { infoRouter } from './routes/info.js';
 import { downloadRouter } from './routes/download.js';
 import { playlistRouter } from './routes/playlist.js';
+import { channelRouter } from './routes/channel.js';
 import { cancelAll, startCleanup } from './services/jobs.js';
 import { refreshBinaries, statusRouter } from './routes/status.js';
 
@@ -45,6 +46,7 @@ app.use('/api/info', limiter);
 app.use('/api', infoRouter);
 app.use('/api', downloadRouter(limiter));
 app.use('/api', playlistRouter(limiter));
+app.use('/api', channelRouter(limiter));
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Endpoint not found.' } });

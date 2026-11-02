@@ -58,6 +58,66 @@ export function looksLikeYouTubeUrl(value: string): boolean {
   }
 }
 
+/** youtube.com/@handle, /channel/UC…, /c/name or /user/name (no video ID). */
+export function isChannelUrl(value: string): boolean {
+  try {
+    const u = new URL(/^https?:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`);
+    if (!/(^|\.)youtube\.com$/i.test(u.hostname) || u.searchParams.get('v')) return false;
+    return /^\/(@[^/]+|channel\/UC[\w-]{22}|c\/[^/]+|user\/[^/]+)(\/|$)/.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+export interface UploadRange {
+  /** Earliest / latest possible upload day, as YYYY-MM-DD. */
+  from: string;
+  to: string;
+  /** What YouTube shows, e.g. "3 weeks ago", or the exact date when recent. */
+  label: string;
+  /** Tooltip, e.g. "Uploaded between Sep 3 and Oct 2, 2026". */
+  title: string;
+  exact: boolean;
+}
+
+const DAY = 86_400_000;
+const isoOf = (t: number) => new Date(t).toISOString().slice(0, 10);
+const shortDate = (t: number) =>
+  new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+
+/**
+ * Turn a listing's approximate upload date back into the range it stands for.
+ * YouTube channel/playlist pages only say "2 weeks ago", "1 month ago" or
+ * "3 years ago", and yt-dlp converts that to (today − N units), so a video
+ * listed as "1 month ago" was uploaded somewhere in that whole month.
+ */
+export function uploadRange(ymd: string | null | undefined, now = Date.now()): UploadRange | null {
+  if (!ymd || !/^\d{8}$/.test(ymd)) return null;
+  const d = Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(4, 6)) - 1, Number(ymd.slice(6, 8)));
+  const age = Math.max(0, Math.round((now - d) / DAY));
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  const back = (t: number, months: number) => {
+    const x = new Date(t);
+    x.setUTCMonth(x.getUTCMonth() - months);
+    return x.getTime();
+  };
+  let from: number;
+  let label: string;
+  if (age < 7) {
+    return { from: isoOf(d), to: isoOf(d), label: shortDate(d), title: `Uploaded ${shortDate(d)}`, exact: true };
+  } else if (age < 30) {
+    from = d - 6 * DAY;
+    label = plural(Math.round(age / 7), 'week');
+  } else if (age < 365) {
+    from = back(d, 1) + DAY;
+    label = plural(Math.max(1, Math.round(age / 30.44)), 'month');
+  } else {
+    from = back(d, 12) + DAY;
+    label = plural(Math.max(1, Math.round(age / 365.25)), 'year');
+  }
+  return { from: isoOf(from), to: isoOf(d), label, title: `Uploaded between ${shortDate(from)} and ${shortDate(d)} (YouTube shows “${label}”)`, exact: false };
+}
+
 export function isPlaylistUrl(value: string): boolean {
   return /[?&]list=[\w-]+/.test(value);
 }

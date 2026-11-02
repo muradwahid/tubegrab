@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, ListChecks, RotateCcw, SquareCheck, X } from 'lucide-react';
-import { api, ApiError, BackendUnreachableError, errorMessage } from '../api/client';
-import { useEventSource } from '../hooks/useEventSource';
+import { ListChecks, RotateCcw, SquareCheck, X } from 'lucide-react';
+import { api, BackendUnreachableError, errorMessage } from '../api/client';
 import { useToast } from '../hooks/useToast';
-import type { BatchSnapshot, HistoryItem, OutputFormat, PlaylistInfo, PlaylistVideo, Quality } from '../types';
-import { formatDuration, triggerDownload } from '../utils/format';
+import { useBatchDownload } from '../hooks/useBatchDownload';
+import type { HistoryItem, PlaylistInfo, PlaylistVideo } from '../types';
 import { UrlInput } from '../components/UrlInput';
 import { Banner } from '../components/Banner';
 import { PlaylistSkeleton } from '../components/Skeleton';
 import { PlaylistList } from '../components/PlaylistList';
-import { DownloadQueue } from '../components/DownloadQueue';
-import { ResolutionSelector, type ResolutionChoice } from '../components/ResolutionSelector';
-import { FormatSelector } from '../components/FormatSelector';
+import { BatchOptions, BatchQueue } from '../components/BatchOptions';
 
 interface Props {
   url: string;
@@ -19,14 +16,6 @@ interface Props {
   fetchSignal: number;
   onDownloaded: (item: Omit<HistoryItem, 'id' | 'createdAt'>) => void;
 }
-
-const PLAYLIST_CHOICES: ResolutionChoice[] = [
-  { id: '1080p', label: '1080p', kind: 'video', detail: 'Full HD', badge: 'HD' },
-  { id: '720p', label: '720p', kind: 'video', detail: 'HD', badge: 'HD' },
-  { id: '480p', label: '480p', kind: 'video', detail: 'Standard' },
-  { id: '360p', label: '360p', kind: 'video', detail: 'Data saver' },
-  { id: 'mp3', label: 'Audio · MP3', kind: 'audio', detail: 'Best quality' },
-];
 
 export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Props) {
   const toast = useToast();
@@ -36,16 +25,16 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo, setRangeTo] = useState('');
-  const [quality, setQuality] = useState<Quality>('1080p');
-  const [format, setFormat] = useState<OutputFormat>('mp4');
-  const [batchId, setBatchId] = useState<string | null>(null);
-  const [batch, setBatch] = useState<BatchSnapshot | null>(null);
-  /** Bumped to re-open the SSE stream after a retry on a finished batch. */
-  const [streamKey, setStreamKey] = useState(0);
-  const [starting, setStarting] = useState(false);
-  const [retrying, setRetrying] = useState<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
-  const announcedRef = useRef<string | null>(null);
+
+  const dl = useBatchDownload({
+    label: 'Playlist',
+    onDownloaded,
+    getHistorySource: () =>
+      playlist
+        ? { kind: 'playlist', title: playlist.title, url, thumbnail: playlist.videos[0]?.thumbnail ?? null }
+        : null,
+  });
 
   const available = useMemo(() => playlist?.videos.filter((v) => !v.unavailable) ?? [], [playlist]);
   const videoMap = useMemo(
@@ -53,8 +42,6 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
     [playlist],
   );
   const selectedVideos = useMemo(() => available.filter((v) => selected.has(v.id)), [available, selected]);
-  const totalDuration = selectedVideos.reduce((s, v) => s + (v.duration ?? 0), 0);
-  const running = starting || batch?.status === 'running';
 
   const fetchPlaylist = useCallback(
     async (target: string) => {
@@ -64,13 +51,11 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
       setLoading(true);
       setFetchError(null);
       setPlaylist(null);
-      setBatch(null);
-      setBatchId(null);
+      dl.reset();
       try {
         const result = await api.playlist(target, controller.signal);
         setPlaylist(result);
-        const ids = result.videos.filter((v) => !v.unavailable).map((v) => v.id);
-        setSelected(new Set(ids));
+        setSelected(new Set(result.videos.filter((v) => !v.unavailable).map((v) => v.id)));
         setRangeFrom('1');
         setRangeTo(String(result.videos.length));
       } catch (err) {
@@ -82,6 +67,7 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
         if (abortRef.current === controller) setLoading(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [toast],
   );
 
@@ -91,36 +77,6 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
   }, [fetchSignal]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
-
-  useEventSource<BatchSnapshot>(
-    batchId ? `${api.batchProgressUrl(batchId)}?k=${streamKey}` : null,
-    (snapshot) => {
-      setBatch(snapshot);
-      if (snapshot.status === 'running') return false;
-      // Announce each finished run once (a retry starts a new run).
-      const signature = `${snapshot.batchId}:${snapshot.completed}:${snapshot.failed}`;
-      if (snapshot.status === 'done' && announcedRef.current !== signature) {
-        announcedRef.current = signature;
-        if (snapshot.failed === 0) {
-          toast.success('Playlist downloaded', `${snapshot.completed} videos ready — grab the ZIP or individual files.`);
-        } else {
-          toast.info('Playlist finished with errors', `${snapshot.completed} downloaded, ${snapshot.failed} failed.`);
-        }
-        if (playlist && snapshot.completed > 0) {
-          onDownloaded({
-            kind: 'playlist',
-            title: playlist.title,
-            url,
-            thumbnail: playlist.videos[0]?.thumbnail ?? null,
-            detail: `${snapshot.completed} video${snapshot.completed === 1 ? '' : 's'} · ${snapshot.quality}`,
-            filename: null,
-          });
-        }
-      }
-      return true;
-    },
-    () => toast.error('Lost connection to the server', 'Progress updates stopped.'),
-  );
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -154,65 +110,8 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
     );
   };
 
-  const start = async () => {
-    if (!playlist || selectedVideos.length === 0) return;
-    setStarting(true);
-    try {
-      const { batchId: id } = await api.startPlaylist(
-        selectedVideos.map((v) => ({ id: v.id, title: v.title })),
-        quality,
-        format,
-        playlist.title,
-      );
-      announcedRef.current = null;
-      setBatch(null);
-      setBatchId(id);
-    } catch (err) {
-      if (!(err instanceof BackendUnreachableError)) {
-        toast.error(
-          err instanceof ApiError && err.status === 429 ? 'Slow down' : 'Couldn’t start downloads',
-          errorMessage(err),
-        );
-      }
-    } finally {
-      setStarting(false);
-    }
-  };
-
-  const cancel = async () => {
-    if (!batchId) return;
-    try {
-      await api.cancelPlaylist(batchId);
-      toast.info('Playlist download cancelled');
-    } catch (err) {
-      toast.error('Couldn’t cancel', errorMessage(err));
-    }
-  };
-
-  const retry = async (videoId: string) => {
-    if (!batchId) return;
-    setRetrying((s) => new Set(s).add(videoId));
-    try {
-      await api.retryPlaylistItem(batchId, videoId);
-      // The stream closes when a batch finishes; reopen it to follow the retry.
-      if (batch?.status !== 'running') setStreamKey((k) => k + 1);
-    } catch (err) {
-      toast.error('Retry failed', errorMessage(err));
-    } finally {
-      setRetrying((s) => {
-        const next = new Set(s);
-        next.delete(videoId);
-        return next;
-      });
-    }
-  };
-
-  const reset = () => {
-    setBatch(null);
-    setBatchId(null);
-  };
-
-  const isAudio = quality === 'mp3';
+  const rangeInputClass =
+    'h-10 w-20 rounded-lg border border-zinc-200 bg-white px-2 text-center tabular-nums focus:border-accent focus:outline-none dark:border-zinc-700 dark:bg-zinc-950/60';
 
   return (
     <div className="space-y-6">
@@ -223,7 +122,7 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
         submitLabel="Fetch Playlist"
         placeholder="https://www.youtube.com/playlist?list=…"
         loading={loading}
-        disabled={running}
+        disabled={dl.running}
         onPasteError={(m) => toast.info(m)}
       />
 
@@ -261,29 +160,8 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
             </Banner>
           )}
 
-          {batch || batchId ? (
-            batch ? (
-              <>
-                <DownloadQueue
-                  batch={batch}
-                  videos={videoMap}
-                  fileUrl={api.fileUrl}
-                  onZip={() => triggerDownload(api.zipUrl(batch.batchId))}
-                  onRetry={(id) => void retry(id)}
-                  onCancel={() => void cancel()}
-                  retrying={retrying}
-                />
-                {batch.status !== 'running' && (
-                  <div className="flex justify-end">
-                    <button type="button" className="btn-ghost" onClick={reset}>
-                      <X className="h-4 w-4" /> Back to selection
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <PlaylistSkeleton />
-            )
+          {dl.active ? (
+            <BatchQueue dl={dl} videos={videoMap} />
           ) : (
             <>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -310,7 +188,7 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
                     value={rangeFrom}
                     onChange={(e) => setRangeFrom(e.target.value)}
                     aria-label="Range start"
-                    className="h-10 w-20 rounded-lg border border-zinc-200 bg-white px-2 text-center tabular-nums focus:border-accent focus:outline-none dark:border-zinc-700 dark:bg-zinc-950/60"
+                    className={rangeInputClass}
                   />
                   <span className="text-zinc-600 dark:text-zinc-300">to</span>
                   <input
@@ -320,7 +198,7 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
                     value={rangeTo}
                     onChange={(e) => setRangeTo(e.target.value)}
                     aria-label="Range end"
-                    className="h-10 w-20 rounded-lg border border-zinc-200 bg-white px-2 text-center tabular-nums focus:border-accent focus:outline-none dark:border-zinc-700 dark:bg-zinc-950/60"
+                    className={rangeInputClass}
                   />
                   <button type="submit" className="btn-secondary py-2">
                     <ListChecks className="h-4 w-4" /> Select range
@@ -330,37 +208,18 @@ export function PlaylistView({ url, onUrlChange, fetchSignal, onDownloaded }: Pr
 
               <PlaylistList videos={playlist.videos} selected={selected} onToggle={toggle} />
 
-              <ResolutionSelector
-                label="Resolution for all videos"
-                choices={PLAYLIST_CHOICES}
-                value={quality}
-                onChange={setQuality}
+              <BatchOptions
+                dl={dl}
+                selected={selectedVideos}
+                availableCount={available.length}
+                maxCount={playlist.maxSize}
+                onStart={() =>
+                  void dl.start(
+                    selectedVideos.map((v) => ({ id: v.id, title: v.title })),
+                    playlist.title,
+                  )
+                }
               />
-              <p className="-mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                If a video doesn’t have this resolution, the next best lower one is used and marked with a “fallback” badge.
-              </p>
-
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-                <FormatSelector
-                  value={format}
-                  onChange={setFormat}
-                  disabled={isAudio}
-                  note={isAudio ? 'Audio is saved as MP3.' : null}
-                />
-                <div className="flex flex-col items-stretch gap-1 sm:items-end">
-                  <button
-                    type="button"
-                    className="btn-primary h-12 px-8 text-base"
-                    onClick={() => void start()}
-                    disabled={selectedVideos.length === 0 || starting}
-                  >
-                    <Download className="h-5 w-5" /> Download Selected ({selectedVideos.length})
-                  </button>
-                  <span className="text-center text-xs text-zinc-500 sm:text-right dark:text-zinc-400">
-                    {selectedVideos.length} of {available.length} selected · {formatDuration(totalDuration)} total
-                  </span>
-                </div>
-              </div>
             </>
           )}
         </div>

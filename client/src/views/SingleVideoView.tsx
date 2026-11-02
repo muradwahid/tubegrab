@@ -5,7 +5,7 @@ import { useEventSource } from '../hooks/useEventSource';
 import { useToast } from '../hooks/useToast';
 import type { HistoryItem, JobSnapshot, OutputFormat, Quality, VideoInfo } from '../types';
 import { TERMINAL_STATUSES } from '../types';
-import { formatBytes, isPlaylistUrl, triggerDownload } from '../utils/format';
+import { formatBytes, isChannelUrl, isPlaylistUrl, triggerDownload } from '../utils/format';
 import { UrlInput } from '../components/UrlInput';
 import { Banner } from '../components/Banner';
 import { VideoPreviewCard } from '../components/VideoPreviewCard';
@@ -20,6 +20,7 @@ interface Props {
   /** Incrementing this asks the view to fetch `url` (e.g. from history). */
   fetchSignal: number;
   onSwitchToPlaylist: () => void;
+  onSwitchToChannel: () => void;
   onDownloaded: (item: Omit<HistoryItem, 'id' | 'createdAt'>) => void;
 }
 
@@ -28,7 +29,7 @@ function defaultQuality(info: VideoInfo): Quality | null {
   return (video.find((q) => (q.height ?? 0) <= 1080) ?? video[0] ?? info.qualities[0])?.id ?? null;
 }
 
-export function SingleVideoView({ url, onUrlChange, fetchSignal, onSwitchToPlaylist, onDownloaded }: Props) {
+export function SingleVideoView({ url, onUrlChange, fetchSignal, onSwitchToPlaylist, onSwitchToChannel, onDownloaded }: Props) {
   const toast = useToast();
   const [info, setInfo] = useState<VideoInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -157,6 +158,7 @@ export function SingleVideoView({ url, onUrlChange, fetchSignal, onSwitchToPlayl
   };
 
   const showPlaylistHint = isPlaylistUrl(url);
+  const showChannelHint = !showPlaylistHint && isChannelUrl(url);
 
   return (
     <div className="space-y-6">
@@ -182,6 +184,20 @@ export function SingleVideoView({ url, onUrlChange, fetchSignal, onSwitchToPlayl
           }
         >
           You can still fetch just this one video here.
+        </Banner>
+      )}
+
+      {showChannelHint && (
+        <Banner
+          variant="info"
+          title="This looks like a channel — switch to Channel mode?"
+          action={
+            <button type="button" className="btn-secondary py-2" onClick={onSwitchToChannel} aria-label="Switch to Channel mode">
+              Switch <ArrowRight className="h-4 w-4" />
+            </button>
+          }
+        >
+          Channel mode lists the channel’s uploads with their dates.
         </Banner>
       )}
 

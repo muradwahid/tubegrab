@@ -4,7 +4,7 @@ export type VideoQuality = '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p
 export type AudioQuality = 'mp3' | 'm4a';
 export type Quality = VideoQuality | AudioQuality;
 export type OutputFormat = 'mp4' | 'webm';
-export type Mode = 'single' | 'playlist';
+export type Mode = 'single' | 'playlist' | 'channel';
 
 export interface QualityOption {
   id: Quality;
@@ -61,7 +61,26 @@ export interface PlaylistVideo {
   duration: number | null;
   thumbnail: string;
   channel: string | null;
+  /** YYYYMMDD; approximate (YouTube lists "3 weeks ago"). Null for Shorts. */
+  uploadDate: string | null;
+  viewCount: number | null;
   unavailable: boolean;
+}
+
+export type ChannelTab = 'videos' | 'shorts' | 'streams';
+
+export interface ChannelPage {
+  id: string | null;
+  name: string;
+  handle: string | null;
+  url: string;
+  avatar: string | null;
+  subscriberCount: number | null;
+  tab: ChannelTab;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  videos: PlaylistVideo[];
 }
 
 export interface PlaylistInfo {
@@ -105,7 +124,7 @@ export interface HealthResponse {
 
 export interface HistoryItem {
   id: string;
-  kind: 'video' | 'playlist';
+  kind: 'video' | 'playlist' | 'channel';
   title: string;
   url: string;
   thumbnail: string | null;

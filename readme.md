@@ -13,6 +13,7 @@ A full-stack YouTube video & playlist downloader.
 
 - **Single video**: preview card (thumbnail, title, channel, duration, views), resolutions built from the formats the video actually has (2160p → 144p) with estimated sizes, plus *Audio only (MP3/M4A)*. Output as MP4 or WEBM. Live progress (%, speed, ETA), cancel, and an automatic browser download named like `My Video Title [1080p].mp4`.
 - **Playlists**: lists up to 100 videos (configurable) with checkboxes, Select/Deselect all, and a "videos 5 to 20" range picker. One resolution applies to the whole playlist, and videos that don't have it fall back to the next lower one (shown with a `fallback: 720p` badge). Downloads queue with at most 2 at a time, show per-video status (Queued / Downloading % / Merging / Done / Failed with Retry), and finish with a ZIP or individual files.
+- **Channels**: paste a channel link (`youtube.com/@name`, `/channel/UC…`, `/c/…`, `/user/…`) to list its **Videos**, **Shorts** or **Live** uploads, newest first, 100 at a time with "Load older videos". Each video shows its **upload date** and views, and an "Uploaded from … to …" filter plus Newest/Oldest sorting narrow the list. Download the selection with the same queue, fallback and ZIP as playlists. Channel pages only say "3 weeks ago" / "1 month ago", so older dates are shown as YouTube shows them (hover for the possible date range), and the filter keeps every video whose range overlaps your dates. **Private videos are never listed**: YouTube shows them only to the channel owner.
 - **Playlist detection**: pasting a `list=` URL into the Single Video tab offers to switch modes.
 - **UX**: dark theme by default with a light/dark toggle, paste-from-clipboard and clear buttons, skeleton loaders, toasts, the last 10 downloads in history (localStorage), and responsive layout down to phone width.
 - **Demo mode**: if the API is unreachable, the UI shows a banner explaining that the backend must be running or deployed, instead of breaking.
@@ -112,6 +113,7 @@ Open <http://localhost:5173>.
 | `GET /api/file/:jobId` | | The finished file (`Content-Disposition: attachment`) |
 | `DELETE /api/download/:jobId` | | Cancels and kills yt-dlp |
 | `POST /api/playlist` | `{ url }` | Playlist metadata + `videos[]` |
+| `POST /api/channel` | `{ url, tab?: "videos" \| "shorts" \| "streams", page?: 1-based }` | Channel name, handle, avatar, subscribers + one page of `videos[]` (with `uploadDate`, `viewCount`) and `hasMore` |
 | `POST /api/playlist/download` | `{ videos: [id \| {id,title}], resolution, format, title? }` | `{ batchId }` |
 | `GET /api/playlist/progress/:batchId` | | SSE with overall + per-video statuses |
 | `POST /api/playlist/:batchId/retry/:videoId` | | Re-queues a failed/cancelled video |

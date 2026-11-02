@@ -13,25 +13,27 @@ import { Toaster } from './components/Toaster';
 import { HistoryPanel } from './components/HistoryPanel';
 import { SingleVideoView } from './views/SingleVideoView';
 import { PlaylistView } from './views/PlaylistView';
+import { ChannelView } from './views/ChannelView';
 
 function Shell() {
   const { theme, toggle } = useTheme();
   const history = useHistory();
   const { state: backend, recheck } = useBackendStatus();
   const [mode, setMode] = useState<Mode>('single');
-  const [urls, setUrls] = useState<Record<Mode, string>>({ single: '', playlist: '' });
-  const [fetchSignals, setFetchSignals] = useState<Record<Mode, number>>({ single: 0, playlist: 0 });
+  const [urls, setUrls] = useState<Record<Mode, string>>({ single: '', playlist: '', channel: '' });
+  const [fetchSignals, setFetchSignals] = useState<Record<Mode, number>>({ single: 0, playlist: 0, channel: 0 });
 
   const setUrl = (m: Mode) => (value: string) => setUrls((u) => ({ ...u, [m]: value }));
 
-  const switchToPlaylist = () => {
-    setUrls((u) => ({ ...u, playlist: u.single }));
-    setMode('playlist');
-    setFetchSignals((s) => ({ ...s, playlist: s.playlist + 1 }));
+  /** Move the Single Video URL to another tab and fetch it there. */
+  const switchFromSingle = (target: 'playlist' | 'channel') => () => {
+    setUrls((u) => ({ ...u, [target]: u.single }));
+    setMode(target);
+    setFetchSignals((s) => ({ ...s, [target]: s[target] + 1 }));
   };
 
   const loadFromHistory = (item: HistoryItem) => {
-    const m: Mode = item.kind === 'playlist' ? 'playlist' : 'single';
+    const m: Mode = item.kind === 'video' ? 'single' : item.kind;
     setUrls((u) => ({ ...u, [m]: item.url }));
     setMode(m);
     setFetchSignals((s) => ({ ...s, [m]: s[m] + 1 }));
@@ -55,7 +57,7 @@ function Shell() {
       <main className="flex-1 space-y-6 pb-10">
         <section className="pt-4 text-center sm:pt-8">
           <h1 className="text-3xl font-extrabold tracking-tight sm:text-5xl">
-            Grab videos & playlists <span className="text-accent">in any quality</span>
+            Grab videos, playlists & channels <span className="text-accent">in any quality</span>
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-zinc-600 sm:text-lg dark:text-zinc-400">
             Paste a link, pick a resolution up to 4K or audio-only, and download — no sign-up.
@@ -92,7 +94,8 @@ function Shell() {
               url={urls.single}
               onUrlChange={setUrl('single')}
               fetchSignal={fetchSignals.single}
-              onSwitchToPlaylist={switchToPlaylist}
+              onSwitchToPlaylist={switchFromSingle('playlist')}
+              onSwitchToChannel={switchFromSingle('channel')}
               onDownloaded={history.add}
             />
           </div>
@@ -101,6 +104,14 @@ function Shell() {
               url={urls.playlist}
               onUrlChange={setUrl('playlist')}
               fetchSignal={fetchSignals.playlist}
+              onDownloaded={history.add}
+            />
+          </div>
+          <div role="tabpanel" id="panel-channel" aria-labelledby="tab-channel" hidden={mode !== 'channel'}>
+            <ChannelView
+              url={urls.channel}
+              onUrlChange={setUrl('channel')}
+              fetchSignal={fetchSignals.channel}
               onDownloaded={history.add}
             />
           </div>
